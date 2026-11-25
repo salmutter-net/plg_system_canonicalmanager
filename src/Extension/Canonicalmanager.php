@@ -14,11 +14,14 @@ use Joomla\Database\DatabaseInterface;
 use Joomla\Event\SubscriberInterface;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\ArticlePolicy;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\ArticleResolver;
+use SalmutterNet\Plugin\System\Canonicalmanager\Service\EditorHint;
+use SalmutterNet\Plugin\System\Canonicalmanager\Service\RouteExplanation;
 
 final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
 {
     protected $autoloadLanguage = true;
     private ?string $canonical = null;
+    private ?string $editorHint = null;
 
     public function __construct(array $config, private DatabaseInterface $db, private \Closure $siteFactory)
     {
@@ -29,6 +32,7 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
     {
         return [
             'onAfterDispatch' => 'onAfterDispatch',
+            'onAfterRender' => 'onAfterRender',
             'onBeforeCompileHead' => 'onBeforeCompileHead',
             'onContentPrepareForm' => 'onContentPrepareForm',
             'onContentBeforeSave' => 'onContentBeforeSave',
@@ -101,6 +105,16 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
         }
     }
 
+    public function onAfterRender(): void
+    {
+        $app = $this->getApplication();
+        if ($this->editorHint === null || !$app->isClient('administrator')
+            || $app->getDocument()->getType() !== 'html') {
+            return;
+        }
+        $app->setBody(EditorHint::insert($app->getBody(), $this->editorHint));
+    }
+
     public function onBeforeCompileHead(): void
     {
         if ($this->canonical === null) {
@@ -140,61 +154,54 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
             . '<field name="canonicalmanager_preview" type="note" label="PLG_SYSTEM_CANONICALMANAGER_PREVIEW" filter="unset" />'
             . '</fieldset></fields></form>');
         $message = Text::_('PLG_SYSTEM_CANONICALMANAGER_SAVE_FIRST');
+        $summary = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $summaryClass = 'info';
         try {
             if ($articleId > 0) {
                 $site = ($this->siteFactory)();
                 $result = (new ArticleResolver($this->db, $site))->resolve($articleId, $app->getLanguage()->getTag());
                 if ($result) {
-                    $escape = static fn (string $text): string => htmlspecialchars($text, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
-                    $message = '<a href="' . $escape($result['url']) . '" target="_blank" rel="noopener noreferrer">'
-                        . $escape($result['url']) . '</a><br>'
-                        . Text::_('PLG_SYSTEM_CANONICALMANAGER_REASON_' . strtoupper($result['selection']['reason'] ?? 'fallback'));
-                    if ($result['selection']) {
-                        $selection = $result['selection'];
-                        $message .= ': ' . $escape($selection['title']) . ' (ID ' . $selection['id'] . ')';
-                        if ($app->getIdentity()->authorise('core.edit', 'com_menus')) {
-                            $message .= ' <a href="index.php?option=com_menus&amp;task=item.edit&amp;id=' . $selection['id'] . '">'
-                                . Text::_('JACTION_EDIT') . '</a>';
-                        }
+                    $canEdit = false;
+                    if ($result['selection'] && $result['selection']['menutype'] !== 'main'
+                        && $app->getIdentity()->authorise('core.manage', 'com_menus')) {
+                        $query = $this->db->getQuery(true)->select($this->db->quoteName('id'))
+                            ->from($this->db->quoteName('#__menu_types'))
+                            ->where($this->db->quoteName('menutype') . ' = ' . $this->db->quote($result['selection']['menutype']));
+                        $menuTypeId = (int) $this->db->setQuery($query)->loadResult();
+                        $canEdit = $menuTypeId > 0 && $app->getIdentity()->authorise('core.edit', 'com_menus.menu.' . $menuTypeId);
                     }
-                    if (count($result['candidates']) > 1) {
-                        $message .= '<br>' . Text::_('PLG_SYSTEM_CANONICALMANAGER_MULTIPLE');
-                    }
+                    $panel = RouteExplanation::render($result, $canEdit,
+                        static fn (string $key): string => Text::_('PLG_SYSTEM_CANONICALMANAGER_' . $key));
+                    $summary = $panel['summary'];
+                    $message = $panel['details'];
                     if ($result['article']->language === '*' && \Joomla\CMS\Language\Multilanguage::isEnabled()) {
-                        $message .= '<br>' . Text::_('PLG_SYSTEM_CANONICALMANAGER_ALL_LANGUAGES');
+                        $message .= '<p>' . htmlspecialchars(Text::_('PLG_SYSTEM_CANONICALMANAGER_ALL_LANGUAGES'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') . '</p>';
                     }
-                    $message .= '<br>' . Text::_('PLG_SYSTEM_CANONICALMANAGER_SAVED_STATE');
+                    $app->getDocument()->getWebAssetManager()->registerAndUseScript('plg_system_canonicalmanager.editor',
+                        Uri::root(true) . '/media/plg_system_canonicalmanager/js/editor.js', ['version' => 'auto'], ['defer' => true]);
                 }
             }
         } catch (\Throwable $error) {
             $message = htmlspecialchars($error->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $summary = $message;
+            $summaryClass = 'warning';
         }
+        $this->editorHint = '<div id="canonicalmanager-summary" class="alert alert-' . $summaryClass . ' py-2 mb-3" role="note">'
+            . '<strong>' . htmlspecialchars(Text::_('PLG_SYSTEM_CANONICALMANAGER_PREVIEW'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . ':</strong> ' . $summary
+            . '<small class="d-block mt-1">' . htmlspecialchars(Text::_('PLG_SYSTEM_CANONICALMANAGER_SUMMARY_DETAILS'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . '</small></div>';
         $form->setFieldAttribute('canonicalmanager_preview', 'description', $message, $group);
-        if ($group === 'attribs' && $app->getIdentity()->authorise('core.admin', 'com_content')) {
-            $form->load('<form><fields name="attribs"><fieldset name="canonicalmanager">'
-                . '<field name="canonicalmanager_menu" type="menuitem" label="PLG_SYSTEM_CANONICALMANAGER_OVERRIDE" '
-                . 'description="PLG_SYSTEM_CANONICALMANAGER_OVERRIDE_DESC" client_id="0" published="1" filter="integer" default="0">'
-                . '<option value="0">PLG_SYSTEM_CANONICALMANAGER_AUTOMATIC</option></field>'
-                . '</fieldset></fields></form>');
-        }
     }
 
     public function onContentBeforeSave(BeforeSaveEvent $event): void
     {
-        if ($event->getContext() !== 'com_content.article'
-            || $this->getApplication()->getIdentity()->authorise('core.admin', 'com_content')) {
+        if (!in_array($event->getContext(), ['com_content.article', 'com_content.form'], true)) {
             return;
         }
         $item = $event->getItem();
-        $id = (int) ($item->id ?? 0);
-        $saved = '';
-        if ($id > 0) {
-            $query = $this->db->getQuery(true)->select($this->db->quoteName('attribs'))
-                ->from($this->db->quoteName('#__content'))->where($this->db->quoteName('id') . ' = ' . $id);
-            $saved = (string) $this->db->setQuery($query)->loadResult();
-        }
         $params = new Registry($item->attribs);
-        $params->set('canonicalmanager_menu', (int) (new Registry($saved))->get('canonicalmanager_menu', 0));
+        $params->remove('canonicalmanager_menu');
         $item->attribs = $params->toString();
     }
 

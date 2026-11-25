@@ -10,18 +10,8 @@ final class ArticlePolicy
             && !in_array($layout, ['edit', 'modal'], true);
     }
 
-    public function choose(array $candidates, int $override = 0): ?array
+    public function choose(array $candidates): ?array
     {
-        if ($override > 0) {
-            foreach ($candidates as $candidate) {
-                if ($candidate['id'] === $override) {
-                    $candidate['reason'] = 'override';
-                    return $candidate;
-                }
-            }
-            return null;
-        }
-
         usort($candidates, static fn (array $a, array $b): int =>
             [$a['distance'], $a['languageRank'], $a['id']] <=> [$b['distance'], $b['languageRank'], $b['id']]
         );

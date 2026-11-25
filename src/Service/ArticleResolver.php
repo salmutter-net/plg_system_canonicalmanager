@@ -7,7 +7,6 @@ use Joomla\CMS\Language\Multilanguage;
 use Joomla\CMS\Router\Route;
 use Joomla\CMS\Uri\Uri;
 use Joomla\Database\DatabaseInterface;
-use Joomla\Registry\Registry;
 
 final class ArticleResolver implements ResolverInterface
 {
@@ -61,17 +60,13 @@ final class ArticleResolver implements ResolverInterface
                 $distance = $index + 1;
             }
             if ($distance !== null) {
-                $candidates[] = ['id' => (int) $item->id, 'title' => $item->title,
+                $candidates[] = ['id' => (int) $item->id, 'title' => $item->title, 'route' => $item->route, 'menutype' => $item->menutype,
                     'distance' => $distance, 'languageRank' => $item->language === $language ? 0 : 1,
                     'reason' => $distance === 0 ? 'article' : 'category'];
             }
         }
 
-        $override = (int) (new Registry($article->attribs))->get('canonicalmanager_menu', 0);
-        $selection = (new ArticlePolicy())->choose($candidates, $override);
-        if ($override && !$selection) {
-            throw new \RuntimeException('The preferred menu item is unavailable, inaccessible, or does not route this article.');
-        }
+        $selection = (new ArticlePolicy())->choose($candidates);
 
         $route = 'index.php?option=com_content&view=article&id=' . $id . ':' . $article->alias
             . '&catid=' . (int) $article->catid . '&Itemid=' . ($selection['id'] ?? -1);

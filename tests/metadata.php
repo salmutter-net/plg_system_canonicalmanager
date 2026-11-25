@@ -11,6 +11,11 @@ foreach ($manifest->files->children() as $file) {
         throw new RuntimeException('Missing packaged file: ' . $file);
     }
 }
+foreach ($manifest->media->children() as $file) {
+    if (!file_exists($root . '/' . (string) $manifest->media['folder'] . '/' . (string) $file)) {
+        throw new RuntimeException('Missing packaged media: ' . $file);
+    }
+}
 $referenceKeys = null;
 foreach (['en-GB', 'de-DE'] as $language) {
     foreach (['ini', 'sys.ini'] as $suffix) {

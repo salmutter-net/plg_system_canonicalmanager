@@ -26,8 +26,8 @@ $candidates = [
 ];
 $check($policy->choose($candidates)['id'] === 5, 'Stable tie-breaking failed.');
 $check($policy->choose(array_reverse($candidates))['id'] === 5, 'Selection depends on input ordering.');
-$check($policy->choose($candidates, 20)['reason'] === 'override', 'Override precedence failed.');
-$check($policy->choose($candidates, 99) === null, 'Invalid override must fail closed.');
+$check($policy->choose($candidates, 20)['id'] === 5, 'Legacy overrides must not affect automatic selection.');
+$check($policy->choose($candidates, 99)['id'] === 5, 'Invalid legacy overrides must not disable canonical resolution.');
 $check($policy->choose([]) === null, 'Empty candidate fallback failed.');
 $parameters = $policy->parameters(['view' => 'article', 'id' => '25:alias', 'catid' => '12', 'Itemid' => '7',
     'utm_source' => 'newsletter', 'gclid' => 'tracking', 'start' => '2', 'custom' => ['value' => 'yes']]);
