@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<updates>
+    <update>
+        <name>Canonical Manager</name>
+        <description>Article canonical URLs and duplicate route redirects.</description>
+        <element>canonicalmanager</element>
+        <type>plugin</type>
+        <folder>system</folder>
+        <client>site</client>
+        <version>0.1.2</version>
+        <downloads>
+            <downloadurl type="full" format="zip">https://github.com/salmutter-net/plg_system_canonicalmanager/releases/download/v0.1.2/plg_system_canonicalmanager-0.1.2.zip</downloadurl>
+        </downloads>
+        <tags><tag>testing</tag></tags>
+        <maintainer>salmutter.net</maintainer>
+        <maintainerurl>https://salmutter.net</maintainerurl>
+        <targetplatform name="joomla" version="(5|6)\..*" />
+        <php_minimum>8.3.0</php_minimum>
+    </update>
+</updates>

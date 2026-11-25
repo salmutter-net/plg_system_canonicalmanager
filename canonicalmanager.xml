@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<extension type="plugin" group="system" method="upgrade">
+    <name>PLG_SYSTEM_CANONICALMANAGER</name>
+    <author>salmutter.net</author>
+    <authorEmail>philipp@salmutter.net</authorEmail>
+    <authorUrl>https://www.salmutter.net</authorUrl>
+    <creationDate>2026-11</creationDate>
+    <copyright>Copyright (C) 2026 salmutter.net</copyright>
+    <license>GNU General Public License version 2 or later</license>
+    <version>0.1.2</version>
+    <description>PLG_SYSTEM_CANONICALMANAGER_DESCRIPTION</description>
+    <namespace path="src">SalmutterNet\Plugin\System\Canonicalmanager</namespace>
+    <files>
+        <folder plugin="canonicalmanager">services</folder>
+        <folder>src</folder>
+        <folder>language</folder>
+        <filename>script.php</filename>
+    </files>
+    <scriptfile>script.php</scriptfile>
+    <languages>
+        <language tag="en-GB">language/en-GB/plg_system_canonicalmanager.ini</language>
+        <language tag="en-GB">language/en-GB/plg_system_canonicalmanager.sys.ini</language>
+        <language tag="de-DE">language/de-DE/plg_system_canonicalmanager.ini</language>
+        <language tag="de-DE">language/de-DE/plg_system_canonicalmanager.sys.ini</language>
+    </languages>
+    <config>
+        <fields name="params">
+            <fieldset name="basic">
+                <field name="mode" type="list" default="audit" label="PLG_SYSTEM_CANONICALMANAGER_MODE" description="PLG_SYSTEM_CANONICALMANAGER_MODE_DESC">
+                    <option value="audit">PLG_SYSTEM_CANONICALMANAGER_AUDIT</option>
+                    <option value="enforce">PLG_SYSTEM_CANONICALMANAGER_ENFORCE</option>
+                </field>
+            </fieldset>
+            <fieldset name="articles" label="PLG_SYSTEM_CANONICALMANAGER_ARTICLES">
+                <field name="article_canonical_parameters" type="textarea" default="" rows="4" filter="string"
+                    label="PLG_SYSTEM_CANONICALMANAGER_ARTICLE_PARAMETERS"
+                    description="PLG_SYSTEM_CANONICALMANAGER_ARTICLE_PARAMETERS_DESC" />
+            </fieldset>
+        </fields>
+    </config>
+    <updateservers>
+        <server type="extension" priority="1" name="Canonical Manager">https://raw.githubusercontent.com/salmutter-net/plg_system_canonicalmanager/main/update.xml</server>
+    </updateservers>
+</extension>
