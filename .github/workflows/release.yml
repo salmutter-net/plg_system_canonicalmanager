@@ -20,6 +20,7 @@ jobs:
           coverage: none
       - run: find src services tests -name '*.php' -exec php -l {} \; && php -l script.php
       - run: php tests/policy.php
+      - run: php tests/canonical-head.php
       - run: php tests/editor-hint.php
       - run: php tests/route-explanation.php
       - run: node --check media/js/editor.js

@@ -14,6 +14,7 @@ use Joomla\Database\DatabaseInterface;
 use Joomla\Event\SubscriberInterface;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\ArticlePolicy;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\ArticleResolver;
+use SalmutterNet\Plugin\System\Canonicalmanager\Service\CanonicalHead;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\EditorHint;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\RouteExplanation;
 
@@ -121,13 +122,7 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
             return;
         }
         $document = $this->getApplication()->getDocument();
-        $head = $document->getHeadData();
-        foreach ($head['links'] ?? [] as $url => $link) {
-            if (strtolower($link['relation'] ?? '') === 'canonical') {
-                unset($head['links'][$url]);
-            }
-        }
-        $document->setHeadData($head);
+        $document->setHeadData(CanonicalHead::clean($document->getHeadData()));
         $document->addHeadLink(htmlspecialchars($this->canonical, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8'), 'canonical');
     }
 
