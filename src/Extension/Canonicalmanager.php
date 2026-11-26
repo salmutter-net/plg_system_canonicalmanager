@@ -16,6 +16,7 @@ use Joomla\Event\SubscriberInterface;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\ArticlePolicy;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\ArticleResolver;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\CanonicalHead;
+use SalmutterNet\Plugin\System\Canonicalmanager\Service\CategoryResolver;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\EditorHint;
 use SalmutterNet\Plugin\System\Canonicalmanager\Service\RouteExplanation;
 
@@ -65,6 +66,10 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
         if ($input->getCmd('option') === 'com_content'
             && $input->getCmd('view') === 'article' && $input->getInt('id') >= 1) {
             $this->handleArticle($app, $input);
+        } elseif ($input->getCmd('option') === 'com_content'
+            && $input->getCmd('view') === 'category' && $input->getInt('id') >= 1
+            && $this->params->get('category_enabled', 1)) {
+            $this->handleCategory($app, $input);
         } elseif ($this->isFrontpageRequest($app, $input)) {
             $this->handleFrontpage($app, $input);
         }
@@ -100,6 +105,26 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
                 (bool) $this->params->get('frontpage_redirect_parameters', 0));
         } catch (\Throwable $error) {
             $this->record('Skipped frontpage: ' . $error->getMessage(), Log::WARNING);
+        }
+    }
+
+    private function handleCategory($app, $input): void
+    {
+        try {
+            $result = (new CategoryResolver($this->db, $app))->resolve($input->getInt('id'), $app->getLanguage()->getTag());
+            if (!$result || !$this->categoryVisible($result['category'])) {
+                return;
+            }
+            $category = $result['category'];
+            if ($app->getLanguageFilter() && $category->language !== '*'
+                && $category->language !== $app->getLanguage()->getTag()) {
+                return;
+            }
+            $parameters = (new ArticlePolicy())->parameters(Uri::getInstance()->getQuery(true),
+                (string) $this->params->get('category_canonical_parameters', ''));
+            $this->applyCanonical($app, 'category ' . (int) $category->id, $result['url'], $parameters, true);
+        } catch (\Throwable $error) {
+            $this->record('Skipped category ' . $input->getInt('id') . ': ' . $error->getMessage(), Log::WARNING);
         }
     }
 
@@ -178,20 +203,32 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
     {
         $app = $this->getApplication();
         $form = $event->getForm();
-        if (!$app->isClient('administrator') || !in_array($form->getName(), ['com_content.article', 'com_menus.item'], true)) {
+        if (!$app->isClient('administrator')
+            || !in_array($form->getName(), ['com_content.article', 'com_menus.item', 'com_categories.categorycom_content'], true)) {
             return;
         }
         $data = (object) $event->getData();
         $id = (int) ($data->id ?? $form->getValue('id', null, 0));
-        $group = $form->getName() === 'com_content.article' ? 'attribs' : 'params';
-        $articleId = $id;
-        if ($group === 'params') {
+        $formName = $form->getName();
+        $group = $formName === 'com_content.article' ? 'attribs' : 'params';
+        $articleId = $formName === 'com_content.article' ? $id : 0;
+        $categoryId = $formName === 'com_categories.categorycom_content' ? $id : 0;
+        if ($formName === 'com_menus.item') {
             $link = (string) ($data->link ?? $form->getValue('link', null, ''));
             parse_str((string) parse_url($link, PHP_URL_QUERY), $menuQuery);
-            if (($menuQuery['option'] ?? '') !== 'com_content' || ($menuQuery['view'] ?? '') !== 'article') {
+            if (($menuQuery['option'] ?? '') !== 'com_content'
+                || !in_array($menuQuery['view'] ?? '', ['article', 'category'], true)) {
                 return;
             }
-            $articleId = (int) ($menuQuery['id'] ?? 0);
+            if (($menuQuery['view'] ?? '') === 'category') {
+                $categoryId = (int) ($menuQuery['id'] ?? 0);
+            } else {
+                $articleId = (int) ($menuQuery['id'] ?? 0);
+            }
+        }
+        if ($categoryId > 0 || ($articleId === 0 && $formName !== 'com_content.article')) {
+            $this->renderCategoryPanel($app, $form, $data, $group, $categoryId);
+            return;
         }
         $form->load('<form><fields name="' . $group . '"><fieldset name="canonicalmanager" label="PLG_SYSTEM_CANONICALMANAGER_PANEL">'
             . '<field name="canonicalmanager_preview" type="note" label="PLG_SYSTEM_CANONICALMANAGER_PREVIEW" filter="unset" />'
@@ -237,6 +274,49 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
         $form->setFieldAttribute('canonicalmanager_preview', 'description', $message, $group);
     }
 
+    private function renderCategoryPanel($app, $form, object $data, string $group, int $categoryId): void
+    {
+        $form->load('<form><fields name="' . $group . '"><fieldset name="canonicalmanager" label="PLG_SYSTEM_CANONICALMANAGER_PANEL">'
+            . '<field name="canonicalmanager_preview" type="note" label="PLG_SYSTEM_CANONICALMANAGER_PREVIEW_CATEGORY" filter="unset" />'
+            . '</fieldset></fields></form>');
+        $message = Text::_('PLG_SYSTEM_CANONICALMANAGER_SAVE_FIRST');
+        $summary = htmlspecialchars($message, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $summaryClass = 'info';
+        try {
+            if ($categoryId > 0) {
+                $site = ($this->siteFactory)();
+                $result = (new CategoryResolver($this->db, $site))->resolve($categoryId, $app->getLanguage()->getTag());
+                if ($result) {
+                    $canEdit = false;
+                    if ($result['selection'] && $result['selection']['menutype'] !== 'main'
+                        && $app->getIdentity()->authorise('core.manage', 'com_menus')) {
+                        $query = $this->db->getQuery(true)->select($this->db->quoteName('id'))
+                            ->from($this->db->quoteName('#__menu_types'))
+                            ->where($this->db->quoteName('menutype') . ' = ' . $this->db->quote($result['selection']['menutype']));
+                        $menuTypeId = (int) $this->db->setQuery($query)->loadResult();
+                        $canEdit = $menuTypeId > 0 && $app->getIdentity()->authorise('core.edit', 'com_menus.menu.' . $menuTypeId);
+                    }
+                    $panel = RouteExplanation::renderCategory($result, $canEdit,
+                        static fn (string $key): string => Text::_('PLG_SYSTEM_CANONICALMANAGER_' . $key));
+                    $summary = $panel['summary'];
+                    $message = $panel['details'];
+                    $app->getDocument()->getWebAssetManager()->registerAndUseScript('plg_system_canonicalmanager.editor',
+                        Uri::root(true) . '/media/plg_system_canonicalmanager/js/editor.js', ['version' => 'auto'], ['defer' => true]);
+                }
+            }
+        } catch (\Throwable $error) {
+            $message = htmlspecialchars($error->getMessage(), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+            $summary = $message;
+            $summaryClass = 'warning';
+        }
+        $this->editorHint = '<div id="canonicalmanager-summary" class="alert alert-' . $summaryClass . ' py-2 mb-3" role="note">'
+            . '<strong>' . htmlspecialchars(Text::_('PLG_SYSTEM_CANONICALMANAGER_PREVIEW_CATEGORY'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . ':</strong> ' . $summary
+            . '<small class="d-block mt-1">' . htmlspecialchars(Text::_('PLG_SYSTEM_CANONICALMANAGER_SUMMARY_DETAILS_CATEGORY'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8')
+            . '</small></div>';
+        $form->setFieldAttribute('canonicalmanager_preview', 'description', $message, $group);
+    }
+
     public function onContentBeforeSave(BeforeSaveEvent $event): void
     {
         if (!in_array($event->getContext(), ['com_content.article', 'com_content.form'], true)) {
@@ -259,10 +339,24 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
             || (!empty($article->publish_down) && $article->publish_down !== $this->db->getNullDate() && $article->publish_down <= $now)) {
             return false;
         }
+        return $this->ancestorsAccessible((int) $article->catid, $levels);
+    }
+
+    private function categoryVisible(object $category): bool
+    {
+        $levels = (new \Joomla\CMS\User\User())->getAuthorisedViewLevels();
+        if ((int) $category->published !== 1 || !in_array((int) $category->access, $levels, true)) {
+            return false;
+        }
+        return $this->ancestorsAccessible((int) $category->id, $levels);
+    }
+
+    private function ancestorsAccessible(int $categoryId, array $levels): bool
+    {
         $query = $this->db->getQuery(true)->select('ancestor.published, ancestor.access')
             ->from($this->db->quoteName('#__categories', 'ancestor'))
             ->join('INNER', $this->db->quoteName('#__categories', 'child'), 'ancestor.lft <= child.lft AND ancestor.rgt >= child.rgt')
-            ->where('child.id = ' . (int) $article->catid)->where('ancestor.id > 1');
+            ->where('child.id = ' . $categoryId)->where('ancestor.id > 1');
         foreach ($this->db->setQuery($query)->loadObjectList() as $category) {
             if ((int) $category->published !== 1 || !in_array((int) $category->access, $levels, true)) {
                 return false;

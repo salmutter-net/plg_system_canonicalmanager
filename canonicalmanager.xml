@@ -7,7 +7,7 @@
     <creationDate>2026-11</creationDate>
     <copyright>Copyright (C) 2026 salmutter.net</copyright>
     <license>GNU General Public License version 2 or later</license>
-    <version>0.2.0</version>
+    <version>0.3.0</version>
     <description>PLG_SYSTEM_CANONICALMANAGER_DESCRIPTION</description>
     <namespace path="src">SalmutterNet\Plugin\System\Canonicalmanager</namespace>
     <files>
@@ -38,6 +38,16 @@
                 <field name="article_canonical_parameters" type="textarea" default="" rows="4" filter="string"
                     label="PLG_SYSTEM_CANONICALMANAGER_ARTICLE_PARAMETERS"
                     description="PLG_SYSTEM_CANONICALMANAGER_ARTICLE_PARAMETERS_DESC" />
+            </fieldset>
+            <fieldset name="categories" label="PLG_SYSTEM_CANONICALMANAGER_CATEGORIES">
+                <field name="category_enabled" type="list" default="1" label="PLG_SYSTEM_CANONICALMANAGER_CATEGORY_ENABLED"
+                    description="PLG_SYSTEM_CANONICALMANAGER_CATEGORY_ENABLED_DESC">
+                    <option value="1">JYES</option>
+                    <option value="0">JNO</option>
+                </field>
+                <field name="category_canonical_parameters" type="textarea" default="" rows="4" filter="string"
+                    label="PLG_SYSTEM_CANONICALMANAGER_CATEGORY_PARAMETERS"
+                    description="PLG_SYSTEM_CANONICALMANAGER_CATEGORY_PARAMETERS_DESC" />
             </fieldset>
             <fieldset name="frontpage" label="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE">
                 <field name="frontpage_enabled" type="list" default="1" label="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_ENABLED"

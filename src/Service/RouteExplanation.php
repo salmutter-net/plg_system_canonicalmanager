@@ -44,4 +44,57 @@ final class RouteExplanation
         return ['details' => $details, 'summary' => $link . '<span class="d-block small mt-1">' . $source
             . ($selection ? ': ' . $escape($selection['title']) : '') . '</span>'];
     }
+
+    public static function renderCategory(array $result, bool $canEdit, callable $text): array
+    {
+        $escape = static fn (string $value): string => htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
+        $selection = $result['selection'];
+        $reason = $selection ? 'CATEGORY' : 'FALLBACK';
+        $source = $escape($text('REASON_' . $reason . '_ITEM'));
+        $url = $escape($result['url']);
+        $link = '<a class="text-break" href="' . $url . '" target="_blank" rel="noopener noreferrer">' . $url . '</a>';
+        $details = '<div class="mb-3 fs-5">' . $link . '</div><p><strong>' . $source . '</strong>';
+        if ($selection) {
+            $details .= ': ' . $escape($selection['title']) . ' (ID ' . (int) $selection['id'] . ')';
+        }
+        $details .= '</p><p>' . $escape($text('EXPLAIN_' . $reason . '_ITEM')) . '</p>';
+        $details .= '<dl class="row mb-3"><dt class="col-sm-4">' . $escape($text('CATEGORY_ALIAS'))
+            . '</dt><dd class="col-sm-8"><code>' . $escape((string) $result['category']->alias) . '</code></dd></dl>';
+        if ($result['candidates']) {
+            $details .= '<p><strong>' . $escape($text('CATEGORY_CANDIDATES')) . '</strong></p><ul class="list-group mb-3">';
+            foreach ($result['candidates'] as $candidate) {
+                $selected = $selection && (int) $candidate['id'] === (int) $selection['id'];
+                $details .= '<li class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2'
+                    . ($selected ? ' list-group-item-success' : '') . '"><span><code>'
+                    . $escape($candidate['route'] === '' ? '/' : $candidate['route']) . '</code> &middot; '
+                    . $escape($candidate['title']) . ' (ID ' . (int) $candidate['id'] . ', '
+                    . $escape($candidate['menutype']) . ', ' . $escape($text('CATEGORY_LAYOUT')) . ': '
+                    . $escape((string) $candidate['layout']) . ')'
+                    . ($selected ? ' <span class="badge bg-success">' . $escape($text('CATEGORY_SELECTED')) . '</span>' : '')
+                    . '</span>';
+                if ($canEdit) {
+                    $details .= '<a class="btn btn-sm btn-outline-primary" href="index.php?option=com_menus&amp;task=item.edit&amp;id='
+                        . (int) $candidate['id'] . '" target="_blank" rel="noopener noreferrer">'
+                        . '<span class="icon-edit" aria-hidden="true"></span> ' . $escape($text('EDIT_MENU')) . '</a>';
+                }
+                $details .= '</li>';
+            }
+            $details .= '</ul>';
+            if (count($result['candidates']) > 1) {
+                $details .= '<p>' . $escape($text('MULTIPLE')) . '</p>';
+            }
+        }
+        $details .= '<div class="d-flex flex-wrap gap-2 align-items-center mb-3">'
+            . '<button type="button" class="btn btn-outline-secondary" data-canonical-copy="' . $url . '" '
+            . 'data-copy-success="' . $escape($text('COPIED')) . '" data-copy-error="' . $escape($text('COPY_FAILED')) . '" hidden>'
+            . '<span class="icon-copy" aria-hidden="true"></span> ' . $escape($text('COPY_URL')) . '</button>'
+            . '<span data-canonical-copy-status role="status" aria-live="polite"></span></div>';
+        if ($canEdit) {
+            $details .= '<p class="small text-muted">' . $escape($text('EDIT_MENU_NOTE')) . '</p>';
+        }
+        $details .= '<p class="small text-muted mb-0">' . $escape($text('SAVED_STATE')) . '</p>';
+
+        return ['details' => $details, 'summary' => $link . '<span class="d-block small mt-1">' . $source
+            . ($selection ? ': ' . $escape($selection['title']) : '') . '</span>'];
+    }
 }
