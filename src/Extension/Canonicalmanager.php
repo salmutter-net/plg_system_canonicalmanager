@@ -9,6 +9,7 @@ use Joomla\CMS\Factory;
 use Joomla\CMS\Language\Text;
 use Joomla\CMS\Log\Log;
 use Joomla\CMS\Plugin\CMSPlugin;
+use Joomla\CMS\Router\Route;
 use Joomla\CMS\Uri\Uri;
 use Joomla\Database\DatabaseInterface;
 use Joomla\Event\SubscriberInterface;
@@ -45,8 +46,7 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
         $app = $this->getApplication();
         $input = $app->getInput();
         if (!$app->isClient('site') || $app->getDocument()->getType() !== 'html'
-            || !$app->getIdentity()->guest || $input->getCmd('option') !== 'com_content'
-            || $input->getCmd('view') !== 'article' || $input->getInt('id') < 1
+            || !$app->getIdentity()->guest
             || !in_array(strtoupper($input->server->getString('REQUEST_METHOD', 'GET')), ['GET', 'HEAD'], true)
             || !(new ArticlePolicy())->permitsDisplay($input->getCmd('task'), $input->getCmd('tmpl'), $input->getCmd('layout'))
             || $input->getBool('print')
@@ -62,6 +62,49 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
             return;
         }
 
+        if ($input->getCmd('option') === 'com_content'
+            && $input->getCmd('view') === 'article' && $input->getInt('id') >= 1) {
+            $this->handleArticle($app, $input);
+        } elseif ($this->isFrontpageRequest($app, $input)) {
+            $this->handleFrontpage($app, $input);
+        }
+    }
+
+    private function isFrontpageRequest($app, $input): bool
+    {
+        if (!$this->params->get('frontpage_enabled', 1)) {
+            return false;
+        }
+        $menu = $app->getMenu();
+        $active = $menu->getActive();
+        if ($active === null) {
+            return false;
+        }
+        $home = $menu->getDefault($app->getLanguage()->getTag()) ?? $menu->getDefault();
+        if ($home === null || (int) $active->id !== (int) $home->id) {
+            return false;
+        }
+        $option = $input->getCmd('option');
+        return $option === '' || ($option === 'com_content' && $input->getCmd('view') === 'featured');
+    }
+
+    private function handleFrontpage($app, $input): void
+    {
+        try {
+            $menu = $app->getMenu();
+            $home = $menu->getDefault($app->getLanguage()->getTag()) ?? $menu->getDefault();
+            $canonical = Route::link('site', 'index.php?Itemid=' . (int) $home->id, false, Route::TLS_IGNORE, true);
+            $parameters = (new ArticlePolicy())->parameters(Uri::getInstance()->getQuery(true),
+                (string) $this->params->get('frontpage_canonical_parameters', ''));
+            $this->applyCanonical($app, 'frontpage', $canonical, $parameters,
+                (bool) $this->params->get('frontpage_redirect_parameters', 0));
+        } catch (\Throwable $error) {
+            $this->record('Skipped frontpage: ' . $error->getMessage(), Log::WARNING);
+        }
+    }
+
+    private function handleArticle($app, $input): void
+    {
         try {
             $result = (new ArticleResolver($this->db, $app))->resolve($input->getInt('id'), $app->getLanguage()->getTag());
             if (!$result || !$this->isPublic($result['article'])) {
@@ -72,37 +115,42 @@ final class Canonicalmanager extends CMSPlugin implements SubscriberInterface
                 && $article->language !== $app->getLanguage()->getTag()) {
                 return;
             }
-            $current = Uri::getInstance()->toString(['scheme', 'host', 'port', 'path', 'query']);
-            $query = Uri::getInstance()->getQuery(true);
-            $parameters = (new ArticlePolicy())->parameters($query, (string) $this->params->get('article_canonical_parameters', ''));
-            $target = new Uri($result['url']);
-            foreach ($parameters['canonical'] as $key => $value) {
-                $target->setVar($key, $value);
-            }
-            $canonical = $target->toString();
-            $target = new Uri($result['url']);
-            foreach ($parameters['redirect'] as $key => $value) {
-                $target->setVar($key, $value);
-            }
-            $redirect = $target->toString();
-            $currentUri = Uri::getInstance();
-            if (strtolower((string) $target->getHost()) !== strtolower((string) $currentUri->getHost())
-                || !in_array($target->getScheme(), ['http', 'https'], true)) {
-                throw new \RuntimeException('Unsafe canonical target rejected.');
-            }
-            $different = !(new ArticlePolicy())->equivalent($current, $redirect);
-            if ($this->params->get('mode', 'audit') === 'audit') {
-                if ($different) {
-                    $this->record('Would redirect article ' . (int) $article->id . ' from ' . json_encode($currentUri->getPath()) . ' to ' . $result['url']);
-                }
-                return;
-            }
-            $this->canonical = $canonical;
-            if ($different) {
-                $app->redirect($redirect, 301);
-            }
+            $parameters = (new ArticlePolicy())->parameters(Uri::getInstance()->getQuery(true),
+                (string) $this->params->get('article_canonical_parameters', ''));
+            $this->applyCanonical($app, 'article ' . (int) $article->id, $result['url'], $parameters, true);
         } catch (\Throwable $error) {
             $this->record('Skipped article ' . $input->getInt('id') . ': ' . $error->getMessage(), Log::WARNING);
+        }
+    }
+
+    private function applyCanonical($app, string $label, string $url, array $parameters, bool $redirectParameters): void
+    {
+        $current = Uri::getInstance()->toString(['scheme', 'host', 'port', 'path', 'query']);
+        $target = new Uri($url);
+        foreach ($parameters['canonical'] as $key => $value) {
+            $target->setVar($key, $value);
+        }
+        $canonical = $target->toString();
+        $target = new Uri($url);
+        foreach ($redirectParameters ? $parameters['redirect'] : $parameters['canonical'] as $key => $value) {
+            $target->setVar($key, $value);
+        }
+        $redirect = $target->toString();
+        $currentUri = Uri::getInstance();
+        if (strtolower((string) $target->getHost()) !== strtolower((string) $currentUri->getHost())
+            || !in_array($target->getScheme(), ['http', 'https'], true)) {
+            throw new \RuntimeException('Unsafe canonical target rejected.');
+        }
+        $different = !(new ArticlePolicy())->equivalent($current, $redirect);
+        if ($this->params->get('mode', 'audit') === 'audit') {
+            if ($different) {
+                $this->record('Would redirect ' . $label . ' from ' . json_encode($currentUri->getPath()) . ' to ' . $url);
+            }
+            return;
+        }
+        $this->canonical = $canonical;
+        if ($different) {
+            $app->redirect($redirect, 301);
         }
     }
 

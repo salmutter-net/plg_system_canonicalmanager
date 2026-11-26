@@ -39,6 +39,22 @@
                     label="PLG_SYSTEM_CANONICALMANAGER_ARTICLE_PARAMETERS"
                     description="PLG_SYSTEM_CANONICALMANAGER_ARTICLE_PARAMETERS_DESC" />
             </fieldset>
+            <fieldset name="frontpage" label="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE">
+                <field name="frontpage_enabled" type="list" default="1" label="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_ENABLED"
+                    description="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_ENABLED_DESC">
+                    <option value="1">JYES</option>
+                    <option value="0">JNO</option>
+                </field>
+                <field name="frontpage_canonical_parameters" type="textarea" default="" rows="4" filter="string"
+                    label="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_PARAMETERS"
+                    description="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_PARAMETERS_DESC" />
+                <field name="frontpage_redirect_parameters" type="list" default="0"
+                    label="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_REDIRECT_PARAMETERS"
+                    description="PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_REDIRECT_PARAMETERS_DESC">
+                    <option value="0">PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_REDIRECT_STRIP</option>
+                    <option value="1">PLG_SYSTEM_CANONICALMANAGER_FRONTPAGE_REDIRECT_PRESERVE</option>
+                </field>
+            </fieldset>
         </fields>
     </config>
     <updateservers>
